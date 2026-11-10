@@ -16,6 +16,8 @@ except Exception:
 HERE = os.path.dirname(os.path.abspath(__file__))
 DOUBAO_EXE = r"C:\Users\86195\AppData\Local\Doubao\Application\Doubao.exe"
 PYW = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
+# 壁纸总开关：state.txt 写 off 就完全不加载壁纸层；写 on 或文件不存在则照旧
+STATE = os.path.join(HERE, "state.txt")
 STOP = os.path.join(os.environ.get("TEMP", "."), "doubao_wall_stop.flag")
 SHOW_FLAG = os.path.join(os.environ.get("TEMP", "."), "doubao_wall_show.flag")
 # 开屏会话标记：起播前写、开屏退出时清，壳靠它在开屏窗口还没建出来的空档里也保持隐藏
@@ -168,8 +170,45 @@ def shell_alive():
     return bool(u32.FindWindowW("DoubaoWallShell", None))
 
 
+def wall_enabled():
+    """state.txt 写 off 就关掉壁纸层；没有文件或写别的值都当开"""
+    try:
+        with open(STATE, "r", encoding="utf-8") as f:
+            return f.read().strip().lower() != "off"
+    except OSError:
+        return True
+
+
+def plain_start():
+    """开关为 off 时走这条：和原版豆包一样，只起程序并激活，不改窗口大小、不起任何壁纸层"""
+    win = find_main_window()
+    proc = doubao_running()
+    if not (win or proc):
+        try:
+            subprocess.Popen([DOUBAO_EXE],
+                             creationflags=DETACHED | CREATE_NO_WINDOW,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             close_fds=True)
+            log("doubao exe launched (plain)")
+        except Exception as e:
+            log("plain launch failed: %r" % (e,))
+            return 3
+    if not win:
+        win, dt = wait_stable_window(timeout=20.0 if proc else 30.0)
+        log("plain window=%s after %.1fs" % (win, dt))
+    if win:
+        if u32.IsIconic(win):
+            u32.ShowWindow(win, SW_RESTORE)
+        u32.SetForegroundWindow(win)
+    log("launcher done (plain)")
+    return 0
+
+
 def main():
     log("launcher start argv=%s" % sys.argv)
+    if not wall_enabled():
+        log("wall disabled by state.txt -> plain start")
+        return plain_start()
     win = find_main_window()
     proc = doubao_running()
 

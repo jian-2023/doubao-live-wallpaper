@@ -7,3 +7,6 @@ __pycache__/
 # 编辑器
 .vscode/
 .idea/
+
+# 本机开关状态，不随仓库走
+skin/state.txt

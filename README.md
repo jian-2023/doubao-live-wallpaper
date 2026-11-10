@@ -10,6 +10,7 @@
 - **切到别的程序**：壁纸层自动收起；右键托盘图标时立刻让开，豆包的「退出」菜单完整可见
 - **鼠标**：完全穿透，豆包照常点击，没有任何交互损失
 - **豆包已运行时再点图标**：只做普通激活，不重播开屏、不响音
+- **一键开关**：双击 `skin\壁纸开关.bat` 切换要不要壁纸，关掉后每次启动都是原版界面，状态持久
 
 ## 仓库结构
 
@@ -23,9 +24,11 @@
     ├── launcher.py         入口：判断冷启动还是普通激活
     ├── dsplash.py          开屏层：满屏放启动片 + 音轨，负责淡出与收尾
     ├── dshell.py           常驻层：贴窗口画壁纸，并把真实 UI 用 DWM 缩略图叠回来
+    ├── switch.py           日常开关：翻转 state.txt 并让正在跑的壁纸层立刻跟着变
+    ├── 壁纸开关.bat        双击切换「要壁纸 / 不要壁纸」
     ├── install.ps1         安装：备份并重定向快捷方式
     ├── restore.py          卸载：撤层 + 还原快捷方式
-    └── 一键还原.bat        双击即可复原
+    └── 一键还原.bat        双击即可复原（彻底卸载）
 ```
 
 素材放在 `skin/` 的**上一级**，脚本按 `os.path.dirname(HERE)` 取，目录层级别打乱。
@@ -48,8 +51,9 @@
 | 4 | `skin/install.ps1` | 第 4 行 `$DOUBAO` | 同上 | 你的 `Doubao.exe` |
 | 5 | `skin/install.ps1` | 第 6 行 `$PyDir` | `...\Programs\Python\Python38` | 你的 Python 目录（或删掉这行，让它走 `Get-Command python` 分支） |
 | 6 | `skin/一键还原.bat` | 第 3 行 | `...\Python38\python.exe` | 你的 `python.exe` |
-| 7 | `skin/install.ps1` + `skin/restore.py` | 快捷方式路径 | `Desktop\豆包.lnk`、`Start Menu\Programs\豆包.lnk` | 你机器上实际的 `.lnk` 路径（名字不叫「豆包」就要改） |
-| 8 | `skin/dshell.py` | 第 32 行 `LW, LH` | `2160, 1368` | 按你的屏幕改（见「已知限制」） |
+| 7 | `skin/壁纸开关.bat` | 第 3 行 | `...\Python38\python.exe` | 你的 `python.exe`（用 `pythonw.exe` 会看不到提示文字） |
+| 8 | `skin/install.ps1` + `skin/restore.py` | 快捷方式路径 | `Desktop\豆包.lnk`、`Start Menu\Programs\豆包.lnk` | 你机器上实际的 `.lnk` 路径（名字不叫「豆包」就要改） |
+| 9 | `skin/dshell.py` | 第 32 行 `LW, LH` | `2160, 1368` | 按你的屏幕改（见「已知限制」） |
 
 查找 Doubao.exe 最快的方法：在桌面快捷方式上右键 → 属性 → 看「目标」。
 
@@ -67,7 +71,23 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 
 装完应该是：满屏开屏 → 界面透出 → 淡进壁纸。
 
-**还原**：双击 `skin\一键还原.bat`。它会以 `%TEMP%\doubao_wall_stop.flag` 通知壳退出，再用 `backup\` 里的备份覆盖回原快捷方式。
+## 日常开关：要壁纸 / 不要壁纸
+
+双击 `skin\壁纸开关.bat`，每点一次翻转一次：
+
+- 当前是**开** → 关掉：写 `state.txt=off`，立刻撤下正在跑的壁纸层；之后每次启动都是原版豆包
+- 当前是**关** → 打开：写 `state.txt=on`，豆包正在运行就立刻挂上壁纸，没运行就下次启动带上
+
+状态存在 `skin\state.txt`，**不主动切换就一直保持**，重启电脑、重开豆包都不影响。也可以指定而不翻转：
+
+```powershell
+python skin\switch.py on
+python skin\switch.py off
+```
+
+`state.txt` 写 `off` 时，`launcher.py` 在 `main()` 开头就分流到 `plain_start()`：只起豆包并激活，不建开屏窗、不 spawn 壁纸壳，和没装这套东西完全一样。删掉 `state.txt` 等同于默认开启。
+
+> 为什么不靠「改快捷方式」来回切换：`.lnk` 写入可能被占用、被杀软拦截或中途异常，一次失败就会让下次启动悄悄回到壁纸，而且没有任何地方记住「上次是什么状态」。状态文件把这件事变成一个可读、可查、可手工修的单一真相。
 
 ## 实现原理
 
@@ -210,12 +230,16 @@ ffmpeg -i 原始.mp4 -vf "delogo=x=30:y=24:w=212:h=70" -c:v libx264 -crf 20 -an 
 
 ## 卸载
 
+**只是不想看壁纸** → 用上面的开关，不要卸载。
+
+**要彻底拆掉、让快捷方式也回到原版**：
+
 ```powershell
 # 双击 skin\一键还原.bat，或手动：
 python skin\restore.py
 ```
 
-`backup\` 里的两个 `.lnk` 是原快捷方式的备份，**还原成功之前别删**。
+`backup\` 里的两个 `.lnk` 是原快捷方式的备份，**还原成功之前别删**。卸载后再想用壁纸，需要重跑一次 `install.ps1`。
 
 ## License
 
